@@ -48,26 +48,42 @@ export default function App() {
   // --- INITIALISIERUNG ---
   useEffect(() => {
     const init = async () => {
-      if (!isCustomerMenu) {
-        const { data } = await supabase.auth.getSession();
-        if (data.session) {
-          setSession(data.session);
-          await fetchUserRole(data.session.user.id);
+      try {
+        if (!isCustomerMenu) {
+          const { data } = await supabase.auth.getSession();
+
+          if (data.session) {
+            setSession(data.session);
+            fetchUserRole(data.session.user.id);
+          }
         }
+
+        // App sofort anzeigen
+        setIsLoading(false);
+
+        // Daten im Hintergrund laden
+        refreshAllData();
+
+      } catch (err) {
+        console.error(err);
+        setIsLoading(false);
       }
-      await refreshAllData();
-      // 5 Sek Loading Screen nur beim ersten Start
-      setTimeout(() => setIsLoading(false), 800);
     };
+
     init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) fetchUserRole(session.user.id);
+
+      if (session) {
+        fetchUserRole(session.user.id);
+      }
     });
+
     return () => subscription.unsubscribe();
   }, []);
-
   const refreshAllData = async () => {
     await Promise.all([fetchProducts(), fetchTransactions(), fetchCategories(), fetchEmployees()]);
   };
@@ -263,9 +279,26 @@ export default function App() {
           <span className="font-black text-[9px] uppercase text-center leading-tight tracking-widest">Kantine der Hl.Maria & Hl.Philopater</span>
         </div>
         <nav className="flex-1 p-2 space-y-1 mt-2">
-          <NavItem active={view === 'pos'} onClick={() => setView('pos')} icon={<ShoppingCart />} label="Kasse" />
-          {isStf && <NavItem active={view === 'products'} onClick={() => setView('products')} icon={<List />} label="Bestand" />}
-          {isAdm && <NavItem active={view === 'statistik'} onClick={() => setView('statistik')} icon={<TrendingUp />} label="Statistik" />}
+          <NavItem
+            active={view === 'pos'}
+            onClick={() => setView('pos')}
+            closeSidebar={() => setIsSidebarOpen(false)}
+            icon={<ShoppingCart />}
+            label="Kasse"
+          />          {isStf && <NavItem
+            active={view === 'products'}
+            onClick={() => setView('products')}
+            closeSidebar={() => setIsSidebarOpen(false)}
+            icon={<List />}
+            label="Bestand"
+          />}
+          {isAdm && <NavItem
+            active={view === 'statistik'}
+            onClick={() => setView('statistik')}
+            closeSidebar={() => setIsSidebarOpen(false)}
+            icon={<TrendingUp />}
+            label="Statistik"
+          />}
           {isStf && <NavItem active={view === 'qr'} onClick={() => setView('qr')} icon={<QrCode />} label="QR-Code" />}
           {isSuper && <NavItem active={view === 'admin'} onClick={() => setView('admin')} icon={<ShieldAlert />} label="Personal" />}
         </nav>
