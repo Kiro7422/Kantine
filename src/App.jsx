@@ -54,18 +54,19 @@ export default function App() {
 
           if (data.session) {
             setSession(data.session);
-            fetchUserRole(data.session.user.id);
+            await fetchUserRole(data.session.user.id);
+          } else {
+            setSession(null);
           }
         }
 
-        // App sofort anzeigen
-        setIsLoading(false);
-
-        // Daten im Hintergrund laden
-        refreshAllData();
+        // WICHTIG: Daten zuerst laden
+        await refreshAllData();
 
       } catch (err) {
         console.error(err);
+      } finally {
+        // NUR EINMAL am Ende
         setIsLoading(false);
       }
     };
@@ -76,10 +77,7 @@ export default function App() {
       data: { subscription }
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-
-      if (session) {
-        fetchUserRole(session.user.id);
-      }
+      if (session) fetchUserRole(session.user.id);
     });
 
     return () => subscription.unsubscribe();
@@ -299,8 +297,24 @@ export default function App() {
             icon={<TrendingUp />}
             label="Statistik"
           />}
-          {isStf && <NavItem active={view === 'qr'} onClick={() => setView('qr')} icon={<QrCode />} label="QR-Code" />}
-          {isSuper && <NavItem active={view === 'admin'} onClick={() => setView('admin')} icon={<ShieldAlert />} label="Personal" />}
+          {isStf && (
+            <NavItem
+              active={view === 'qr'}
+              onClick={() => setView('qr')}
+              closeSidebar={() => setIsSidebarOpen(false)}
+              icon={<QrCode />}
+              label="QR-Code"
+            />
+          )}
+          {isSuper && (
+            <NavItem
+              active={view === 'admin'}
+              onClick={() => setView('admin')}
+              closeSidebar={() => setIsSidebarOpen(false)}
+              icon={<ShieldAlert />}
+              label="Personal"
+            />
+          )}
         </nav>
         <button onClick={() => supabase.auth.signOut()} className="m-4 p-3 rounded-xl bg-red-500/10 text-red-400 font-bold flex items-center gap-3 hover:bg-red-500 hover:text-white transition-all uppercase text-[9px] tracking-widest">
           <LogOut size={14} /> Abmelden
