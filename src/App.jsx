@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { QRCodeSVG } from 'qrcode.react';
-
+document.documentElement.style.backgroundColor = "#1e3a8a";
+document.body.style.backgroundColor = "#1e3a8a";
 export default function App() {
   // --- KUNDEN-MENÜ LOGIK (QR SCAN) ---
   const queryParams = new URLSearchParams(window.location.search);
