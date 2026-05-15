@@ -60,27 +60,21 @@ export default function App() {
           }
         }
 
-        // WICHTIG: Daten zuerst laden
         await refreshAllData();
 
       } catch (err) {
         console.error(err);
-      } finally {
-        // NUR EINMAL am Ende
-        setIsLoading(false);
       }
     };
 
     init();
 
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) fetchUserRole(session.user.id);
-    });
+    // ⭐ FIX: mindestens 4 Sekunden LoadingScreen
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 4000);
 
-    return () => subscription.unsubscribe();
+    return () => clearTimeout(timer);
   }, []);
   const refreshAllData = async () => {
     await Promise.all([fetchProducts(), fetchTransactions(), fetchCategories(), fetchEmployees()]);
