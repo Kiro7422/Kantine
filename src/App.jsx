@@ -57,7 +57,7 @@ export default function App() {
       }
       await refreshAllData();
       // 5 Sek Loading Screen nur beim ersten Start
-      setTimeout(() => setIsLoading(false), 5000);
+      setTimeout(() => setIsLoading(false), 3000);
     };
     init();
 
@@ -262,12 +262,59 @@ export default function App() {
           <img src="/kantineapplogo.png" className="w-12 h-12 object-contain drop-shadow-xl" />
           <span className="font-black text-[9px] uppercase text-center leading-tight tracking-widest">Kantine der Hl.Maria & Hl.Philopater</span>
         </div>
+        {/* Ersetze deinen <nav> Bereich durch diesen hier: */}
         <nav className="flex-1 p-2 space-y-1 mt-2">
-          <NavItem active={view === 'pos'} onClick={() => setView('pos')} icon={<ShoppingCart />} label="Kasse" />
-          {isStf && <NavItem active={view === 'products'} onClick={() => setView('products')} icon={<List />} label="Bestand" />}
-          {isAdm && <NavItem active={view === 'statistik'} onClick={() => setView('statistik')} icon={<TrendingUp />} label="Statistik" />}
-          {isStf && <NavItem active={view === 'qr'} onClick={() => setView('qr')} icon={<QrCode />} label="QR-Code" />}
-          {isSuper && <NavItem active={view === 'admin'} onClick={() => setView('admin')} icon={<ShieldAlert />} label="Personal" />}
+          <NavItem
+            active={view === 'pos'}
+            onClick={() => { setView('pos'); setIsSidebarOpen(false); }}
+            icon={<ShoppingCart />}
+            label="Kasse"
+          />
+
+          {isStf && (
+            <NavItem
+              active={view === 'products'}
+              onClick={() => { setView('products'); setIsSidebarOpen(false); }}
+              icon={<List />}
+              label="Bestand"
+            />
+          )}
+
+          {isAdm && (
+            <NavItem
+              active={view === 'statistik'}
+              onClick={() => { setView('statistik'); setIsSidebarOpen(false); }}
+              icon={<TrendingUp />}
+              label="Statistik"
+            />
+          )}
+
+          {isStf && (
+            <NavItem
+              active={view === 'qr'}
+              onClick={() => { setView('qr'); setIsSidebarOpen(false); }}
+              icon={<QrCode />}
+              label="QR-Code"
+            />
+          )}
+
+          {isSuperAdmin && (
+            <NavItem
+              active={view === 'logs'}
+              onClick={() => { setView('logs'); setIsSidebarOpen(false); }}
+              icon={<Activity />}
+              label="Aktivitäten"
+            />
+          )}
+
+          {isSuperAdmin && (
+            <NavItem
+              active={view === 'admin'}
+              onClick={() => { setView('admin'); setIsSidebarOpen(false); }}
+              icon={<ShieldAlert />}
+              label="Personal"
+            />
+          )}
         </nav>
         <button onClick={() => supabase.auth.signOut()} className="m-4 p-3 rounded-xl bg-red-500/10 text-red-400 font-bold flex items-center gap-3 hover:bg-red-500 hover:text-white transition-all uppercase text-[9px] tracking-widest">
           <LogOut size={14} /> Abmelden
