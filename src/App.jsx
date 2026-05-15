@@ -20,6 +20,7 @@ export default function App() {
   const [view, setView] = useState(isCustomerMenu ? 'customer-menu' : 'pos');
   const [userRole, setUserRole] = useState('staff');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false);
 
   // Daten-States
   const [products, setProducts] = useState([]);
@@ -42,13 +43,17 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, id: null, type: null });
   const [checkoutModal, setCheckoutModal] = useState(false);
-  const [cashGiven, setCashGiven] = useState('');
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [transactionItems, setTransactionItems] = useState([]);
+  const [cashGiven, setCashGiven] = useState('');
+
+  // Animations-States (Für das Fly-to-Cart Feature)
+  const [animations, setAnimations] = useState([]);
+  const [cartBump, setCartBump] = useState(false);
 
   // --- INITIALISIERUNG ---
   useEffect(() => {
-    const init = async () => {
+    const initApp = async () => {
       try {
         if (!isCustomerMenu) {
           const { data } = await supabase.auth.getSession();
@@ -59,14 +64,13 @@ export default function App() {
         }
         await refreshAllData();
       } catch (err) {
-        console.error("Init Error:", err);
+        console.error(err);
       } finally {
-        // Mindestens 1,5 Sekunden anzeigen für den Übergang
         setTimeout(() => setIsLoading(false), 1500);
       }
     };
 
-    init();
+    initApp();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
@@ -80,13 +84,7 @@ export default function App() {
   }, []);
 
   const refreshAllData = async () => {
-    await Promise.all([
-      fetchProducts(),
-      fetchTransactions(),
-      fetchCategories(),
-      fetchEmployees(),
-      fetchLogs()
-    ]);
+    await Promise.all([fetchProducts(), fetchTransactions(), fetchCategories(), fetchEmployees(), fetchLogs()]);
   };
 
   const fetchUserRole = async (uid) => {
@@ -138,14 +136,48 @@ export default function App() {
     fetchLogs();
   };
 
-  // --- KASSEN FUNKTIONEN ---
-  const addToCart = (p) => {
+  // --- KASSEN FUNKTIONEN (Mit Animation) ---
+  const handleAddToCart = (p, e) => {
+    // 1. Produkt zum Warenkorb hinzufügen
     setCart(prev => {
       const ex = prev.find(i => i.id === p.id);
       if (ex) return prev.map(i => i.id === p.id ? { ...i, quantity: i.quantity + 1 } : i);
       return [...prev, { ...p, quantity: 1 }];
     });
     addToast('success', `${p.name} hinzugefügt`);
+
+    // 2. Animation starten (Fly-to-Cart)
+    if (e && e.currentTarget) {
+      // Startpunkt (Das angeklickte Produkt)
+      const rect = e.currentTarget.getBoundingClientRect();
+      const startX = rect.left + rect.width / 2;
+      const startY = rect.top + rect.height / 2;
+
+      // Zielpunkt (Kassen-Knopf oder Seitenleisten-Korb)
+      const isMobile = window.innerWidth < 768;
+      const targetId = isMobile ? 'cart-target-mobile' : 'cart-target-desktop';
+      const targetEl = document.getElementById(targetId);
+
+      let targetX = window.innerWidth / 2;
+      let targetY = window.innerHeight;
+
+      if (targetEl) {
+        const tRect = targetEl.getBoundingClientRect();
+        targetX = tRect.left + tRect.width / 2;
+        targetY = tRect.top + tRect.height / 2;
+      }
+
+      // Animation in den State pushen
+      const id = Date.now() + Math.random();
+      setAnimations(prev => [...prev, { id, startX, startY, targetX, targetY, img: p.image_url }]);
+    }
+  };
+
+  const removeAnimation = (id) => {
+    setAnimations(prev => prev.filter(a => a.id !== id));
+    // Kleiner Bump/Puls-Effekt auf den Warenkorb-Knopf
+    setCartBump(true);
+    setTimeout(() => setCartBump(false), 200);
   };
 
   const handleCheckout = async () => {
@@ -258,7 +290,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-white font-sans p-6 text-center">
         <img src="/kantineapplogo.png" className="w-24 h-24 mx-auto mb-6" />
-        <h1 className="text-3xl font-black text-primary uppercase mb-10 italic">Speisekarte</h1>
+        <h1 className="text-3xl font-black text-primary uppercase tracking-tighter mb-10 italic">Speisekarte</h1>
         <div className="grid grid-cols-1 gap-4 max-w-xl mx-auto">
           {products.map(p => (
             <div key={p.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-[2.5rem] border shadow-sm text-left">
@@ -281,6 +313,27 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden select-none font-sans">
+
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .print-area, .print-area * { visibility: visible !important; }
+          .print-area { 
+            position: absolute !important; 
+            left: 0 !important; 
+            top: 0 !important; 
+            width: 100% !important; 
+            height: 100% !important;
+            display: flex !important; 
+            background-color: white !important; 
+            margin: 0 !important; 
+            padding: 0 !important; 
+          }
+          html, body { background-color: white !important; margin: 0 !important; padding: 0 !important; }
+          nav, header, button, .no-print { display: none !important; }
+        }
+      `}</style>
+
       <div className="fixed top-6 right-6 z-[100] space-y-3 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className={`px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-slide-left pointer-events-auto border-l-8 bg-white ${t.type === 'success' ? 'text-green-600 border-green-600' : 'text-red-600 border-red-600'}`}>
@@ -290,19 +343,18 @@ export default function App() {
         ))}
       </div>
 
-      {/* SIDEBAR */}
       <div className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:relative md:translate-x-0 transition duration-300 ease-in-out z-30 w-52 bg-primary text-white flex flex-col no-print`}>
         <div className="p-4 border-b border-blue-800 flex flex-col items-center gap-2">
           <img src="/kantineapplogo.png" className="w-12 h-12 object-contain drop-shadow-xl" />
           <span className="font-black text-[9px] uppercase text-center leading-tight tracking-widest">Kantine der Hl.Maria & Hl.Philopater</span>
         </div>
         <nav className="flex-1 p-2 space-y-1 mt-2">
-          <NavItem active={view === 'pos'} onClick={() => setView('pos')} closeSidebar={() => setIsSidebarOpen(false)} icon={<ShoppingCart />} label="Kasse" />
-          {isStf && <NavItem active={view === 'products'} onClick={() => setView('products')} closeSidebar={() => setIsSidebarOpen(false)} icon={<List />} label="Bestand" />}
-          {isAdm && <NavItem active={view === 'statistik'} onClick={() => setView('statistik')} closeSidebar={() => setIsSidebarOpen(false)} icon={<TrendingUp />} label="Statistik" />}
-          {isStf && <NavItem active={view === 'qr'} onClick={() => setView('qr')} closeSidebar={() => setIsSidebarOpen(false)} icon={<QrCode />} label="QR-Code" />}
-          {isSuper && <NavItem active={view === 'logs'} onClick={() => setView('logs')} closeSidebar={() => setIsSidebarOpen(false)} icon={<Activity />} label="Aktivitäten" />}
-          {isSuper && <NavItem active={view === 'admin'} onClick={() => setView('admin')} closeSidebar={() => setIsSidebarOpen(false)} icon={<ShieldAlert />} label="Personal" />}
+          <NavItem active={view === 'pos'} onClick={() => { setView('pos'); setIsSidebarOpen(false); }} icon={<ShoppingCart />} label="Kasse" />
+          {isStf && <NavItem active={view === 'products'} onClick={() => { setView('products'); setIsSidebarOpen(false); }} icon={<List />} label="Bestand" />}
+          {isAdm && <NavItem active={view === 'statistik'} onClick={() => { setView('statistik'); setIsSidebarOpen(false); }} icon={<TrendingUp />} label="Statistik" />}
+          {isStf && <NavItem active={view === 'qr'} onClick={() => { setView('qr'); setIsSidebarOpen(false); }} icon={<QrCode />} label="QR-Code" />}
+          {isSuper && <NavItem active={view === 'logs'} onClick={() => { setView('logs'); setIsSidebarOpen(false); }} icon={<Activity />} label="Aktivitäten" />}
+          {isSuper && <NavItem active={view === 'admin'} onClick={() => { setView('admin'); setIsSidebarOpen(false); }} icon={<ShieldAlert />} label="Personal" />}
         </nav>
         <button onClick={() => supabase.auth.signOut()} className="m-4 p-3 rounded-xl bg-red-500/10 text-red-400 font-bold flex items-center gap-3 hover:bg-red-500 hover:text-white transition-all uppercase text-[9px] tracking-widest">
           <LogOut size={14} /> Abmelden
@@ -319,8 +371,9 @@ export default function App() {
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-8 no-print">
+
           {view === 'pos' && (
-            <div className="h-full flex flex-col md:flex-row gap-8">
+            <div className="h-full flex flex-col md:flex-row gap-8 relative">
               <div className="flex-1 flex flex-col overflow-hidden">
                 <h2 className="text-2xl font-black mb-6 uppercase tracking-tighter italic">Speisekarte</h2>
                 <div className="flex gap-2 overflow-x-auto pb-4 mb-4 no-scrollbar">
@@ -329,10 +382,10 @@ export default function App() {
                     <button key={c.id} onClick={() => setFilterCat(c.name)} className={`px-5 py-2 rounded-full font-black text-[10px] uppercase shadow-sm transition-all ${filterCat === c.name ? 'bg-primary text-white' : 'bg-white text-gray-400 border'}`}>{c.name}</button>
                   ))}
                 </div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 overflow-y-auto pr-2">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 overflow-y-auto pr-2 pb-24">
                   {products.filter(p => filterCat === 'All' || p.categories?.name === filterCat).map(p => (
-                    <button key={p.id} onClick={() => addToCart(p)} className="bg-white p-4 rounded-[2rem] shadow-sm border-2 border-transparent hover:border-secondary hover:shadow-xl transition-all active:scale-95 flex flex-col items-center">
-                      <div className="w-full aspect-square bg-gray-50 rounded-3xl overflow-hidden mb-3 flex items-center justify-center border">
+                    <button key={p.id} onClick={(e) => handleAddToCart(p, e)} className="bg-white p-4 rounded-[2rem] shadow-sm border-2 border-transparent hover:border-secondary hover:shadow-xl transition-all active:scale-95 flex flex-col items-center relative overflow-hidden group">
+                      <div className="w-full aspect-square bg-gray-50 rounded-3xl overflow-hidden mb-3 flex items-center justify-center border group-active:scale-90 transition-transform">
                         {p.image_url ? <img src={p.image_url} className="w-full h-full object-cover" /> : <ImageIcon className="text-gray-200" size={24} />}
                       </div>
                       <span className="font-bold text-gray-800 text-[10px] text-center line-clamp-1 uppercase">{p.name}</span>
@@ -341,8 +394,16 @@ export default function App() {
                   ))}
                 </div>
               </div>
-              <div className="w-full md:w-80 bg-white rounded-[3rem] shadow-xl p-6 flex flex-col border">
-                <h3 className="font-black text-lg mb-6 flex items-center gap-2 text-primary uppercase"><ShoppingCart size={20} /> Korb</h3>
+
+              <div className={`fixed inset-0 z-50 bg-white p-8 flex flex-col transition-transform duration-300 md:relative md:translate-y-0 md:w-80 md:flex md:inset-auto md:rounded-[3rem] md:shadow-xl md:border ${isCartOpen ? 'translate-y-0' : 'translate-y-full md:translate-y-0'}`}>
+                <div className="flex items-center justify-between mb-8 md:hidden">
+                  <h3 className="font-black text-xl text-primary uppercase tracking-tighter italic">Warenkorb</h3>
+                  <button onClick={() => setIsCartOpen(false)} className="p-3 bg-gray-100 rounded-full text-gray-400"><X size={20} /></button>
+                </div>
+                <h3 id="cart-target-desktop" className={`hidden md:flex font-black text-lg mb-6 items-center gap-2 text-primary uppercase transition-transform duration-200 ${cartBump ? 'scale-125 origin-left text-secondary' : ''}`}>
+                  <ShoppingCart size={20} /> Korb
+                </h3>
+
                 <div className="flex-1 overflow-y-auto space-y-3 mb-6 pr-1">
                   {cart.length === 0 ? <div className="h-full flex flex-col items-center justify-center opacity-10"><ShoppingCart size={48} /><p className="font-black uppercase text-[10px] mt-2">Leer</p></div> :
                     cart.map(item => (
@@ -351,7 +412,7 @@ export default function App() {
                         <div className="flex items-center gap-2">
                           <button onClick={() => setCart(cart.map(i => i.id === item.id ? { ...i, quantity: Math.max(1, i.quantity - 1) } : i))} className="w-7 h-7 rounded-lg bg-white shadow-sm border font-black">-</button>
                           <span className="font-black text-xs">{item.quantity}</span>
-                          <button onClick={() => addToCart(item)} className="w-7 h-7 rounded-lg bg-white shadow-sm border font-black">+</button>
+                          <button onClick={(e) => handleAddToCart(item, e)} className="w-7 h-7 rounded-lg bg-white shadow-sm border font-black">+</button>
                           <button onClick={() => setCart(cart.filter(i => i.id !== item.id))} className="text-red-400 ml-1"><Trash2 size={14} /></button>
                         </div>
                       </div>
@@ -359,9 +420,17 @@ export default function App() {
                 </div>
                 <div className="border-t pt-4">
                   <div className="flex justify-between text-2xl font-black mb-6 text-primary italic"><span>Total</span><span>{cart.reduce((s, i) => s + (i.price * i.quantity), 0).toFixed(2)} €</span></div>
-                  <button onClick={() => setCheckoutModal(true)} disabled={cart.length === 0} className="w-full bg-secondary text-primary py-5 rounded-2xl font-black shadow-lg uppercase text-[10px] tracking-widest active:scale-95 transition-all">Bezahlen</button>
+                  <button onClick={() => { setCheckoutModal(true); setIsCartOpen(false); }} disabled={cart.length === 0} className="w-full bg-secondary text-primary py-5 rounded-2xl font-black shadow-lg uppercase text-[10px] tracking-widest active:scale-95 transition-all">Bezahlen</button>
                 </div>
               </div>
+
+              {/* SCHWEBENDER BUTTON (Mit Bump Animation) */}
+              <button id="cart-target-mobile" onClick={() => setIsCartOpen(true)} className={`md:hidden fixed bottom-6 right-6 w-16 h-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center z-40 transition-all duration-200 ${cartBump ? 'scale-125 bg-secondary text-primary' : 'animate-bounce-short'}`}>
+                <div className="relative">
+                  <ShoppingCart size={28} />
+                  {cart.length > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-white">{cart.reduce((s, i) => s + i.quantity, 0)}</span>}
+                </div>
+              </button>
             </div>
           )}
 
@@ -377,7 +446,9 @@ export default function App() {
                     <Input type="number" value={newProduct.price} onChange={e => setNewProduct({ ...newProduct, price: e.target.value })} placeholder="Preis" />
                     <div className="relative">
                       <input list="cat-options" value={newProduct.category} onChange={e => setNewProduct({ ...newProduct, category: e.target.value })} placeholder="Kategorie wählen/tippen" className="w-full p-4 rounded-2xl bg-gray-50 border-none font-bold text-xs outline-none focus:ring-4 focus:ring-primary/5" />
-                      <datalist id="cat-options">{categories.map(c => <option key={c.id} value={c.name} />)}</datalist>
+                      <datalist id="cat-options">
+                        {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                      </datalist>
                     </div>
                   </div>
                   <div className="space-y-4">
@@ -385,7 +456,7 @@ export default function App() {
                       {imagePreview || newProduct.image_url ? (
                         <img src={imagePreview || newProduct.image_url} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="text-center text-gray-300"><Camera size={32} className="mx-auto mb-2" /><span className="text-[8px] font-black uppercase">Foto hochladen/aufnehmen</span></div>
+                        <div className="text-center text-gray-300"><Camera size={32} className="mx-auto mb-2" /><span className="text-[8px] font-black uppercase">Foto hochladen</span></div>
                       )}
                       <input type="file" accept="image/*" capture="environment" onChange={e => {
                         if (e.target.files[0]) { setImageFile(e.target.files[0]); setImagePreview(URL.createObjectURL(e.target.files[0])); }
@@ -441,6 +512,7 @@ export default function App() {
                 <div className="bg-white p-8 rounded-[3rem] shadow-sm border"><p className="text-[10px] uppercase font-black text-gray-400 mb-1">Verkäufe</p><h2 className="text-4xl font-black">{filteredTr.length}</h2></div>
                 <div className="bg-secondary p-8 rounded-[3rem] text-primary shadow-xl"><p className="text-[10px] uppercase font-black opacity-60">Top Produkt</p><h2 className="text-xl font-black truncate uppercase">{products[0]?.name || '-'}</h2></div>
               </div>
+
               <div className="bg-white p-8 rounded-[3.5rem] shadow-xl border h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData}>
@@ -452,6 +524,7 @@ export default function App() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="bg-white rounded-[3rem] shadow-xl p-8 border">
                   <h3 className="font-black text-[10px] uppercase tracking-widest text-gray-400 mb-6">Top 5 Renner</h3>
@@ -527,7 +600,7 @@ export default function App() {
                               const nr = e.target.value;
                               await supabase.from('employees').update({ role: nr }).eq('id', emp.id);
                               fetchEmployees(); addToast('success', 'Rolle geändert');
-                            }} className="bg-gray-100 border-none text-[10px] font-black uppercase rounded-xl p-3 outline-none">
+                            }} className="bg-gray-100 border-none text-[10px] font-black uppercase rounded-xl p-3 outline-none focus:ring-4 focus:ring-primary/10">
                               <option value="staff">Staff</option>
                               <option value="admin">Admin</option>
                               <option value="superadmin">Superadmin</option>
@@ -571,13 +644,19 @@ export default function App() {
               </div>
             </div>
           )}
+
         </main>
       </div>
 
-      {/* --- PRINT AREA (FÜR POSTER UND BON) --- */}
-      <div className="hidden print:flex fixed inset-0 bg-white z-[999] flex-col items-center justify-center text-center p-0 m-0">
+      {/* FLY-TO-CART ANIMATIONEN */}
+      {animations.map(anim => (
+        <FlyingItem key={anim.id} {...anim} onComplete={() => removeAnimation(anim.id)} />
+      ))}
+
+      {/* PRINT AREA */}
+      <div className="print-area hidden print:flex fixed inset-0 bg-white z-[999] flex-col items-center justify-center text-center p-0 m-0">
         {selectedTransaction ? (
-          <div className="w-[80mm] mx-auto p-4 text-black font-mono text-left">
+          <div className="w-[80mm] mx-auto p-4 text-black font-mono text-left bg-white">
             <h1 className="text-xl font-black text-center mb-2 uppercase">Kirchen-Kantine</h1>
             <p className="text-xs italic text-center mb-4">Hl. Maria & Philopater</p>
             <div className="border-t border-b border-black py-2 mb-4 text-[10px]">
@@ -597,36 +676,37 @@ export default function App() {
               <span>GESAMT</span>
               <span>{selectedTransaction.total_amount.toFixed(2)}€</span>
             </div>
-            <p className="mt-10 text-[10px] font-bold uppercase text-center">Gott segne Sie!</p>
+            <p className="mt-10 text-[10px] font-bold uppercase text-center tracking-widest">Vielen Dank für Ihren Besuch!</p>
           </div>
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center p-20 bg-white text-black text-center">
             <img src="/kantineapplogo.png" className="w-40 h-40 mb-10 object-contain" />
             <h1 className="text-6xl font-black uppercase mb-4 tracking-tighter text-primary">اعمل اسكان للكود و شوف</h1>
-            <div className="border-[20px] border-primary p-12 rounded-[5rem]">
+            <p className="text-2xl font-bold text-gray-500 mb-16 uppercase tracking-[0.3em]">Scannen & Menü ansehen</p>
+            <div className="border-[20px] border-primary p-12 rounded-[5rem] shadow-none bg-white">
               <QRCodeSVG value={`${window.location.origin}?view=menu`} size={500} level="H" />
             </div>
           </div>
         )}
       </div>
 
-      {/* --- MODALS --- */}
+      {/* MODALS */}
       {deleteConfirm.open && (
-        <div className="fixed inset-0 bg-primary/95 backdrop-blur-3xl flex items-center justify-center p-6 z-[200]">
+        <div className="fixed inset-0 bg-primary/95 backdrop-blur-3xl flex items-center justify-center p-6 z-[200] no-print">
           <div className="bg-white rounded-[4rem] p-12 max-w-sm w-full text-center shadow-2xl animate-scale-in">
             <AlertCircle size={54} className="mx-auto mb-6 text-red-500 animate-pulse" />
             <h2 className="text-3xl font-black mb-4 uppercase tracking-tighter text-gray-800">Löschen?</h2>
             <p className="text-gray-400 font-bold text-[10px] mb-10 uppercase tracking-widest">Dies kann nicht rückgängig gemacht werden!</p>
             <div className="flex flex-col gap-4">
-              <button onClick={confirmDeletion} className="w-full bg-red-600 text-white py-6 rounded-3xl font-black shadow-2xl active:scale-95 transition-all uppercase text-[10px]">JA, LÖSCHEN</button>
-              <button onClick={() => setDeleteConfirm({ open: false })} className="w-full py-4 text-gray-400 font-black uppercase text-[10px]">Abbrechen</button>
+              <button onClick={confirmDeletion} className="w-full bg-red-600 text-white py-6 rounded-3xl font-black shadow-2xl active:scale-95 transition-all uppercase text-[10px] tracking-widest">JA, LÖSCHEN</button>
+              <button onClick={() => setDeleteConfirm({ open: false })} className="w-full py-4 text-gray-400 font-black uppercase text-[10px]">Abbruch</button>
             </div>
           </div>
         </div>
       )}
 
       {checkoutModal && (
-        <div className="fixed inset-0 bg-primary/95 backdrop-blur-3xl flex items-end md:items-center justify-center p-0 md:p-4 z-50">
+        <div className="fixed inset-0 bg-primary/95 backdrop-blur-3xl flex items-end md:items-center justify-center p-0 md:p-4 z-50 no-print">
           <div className="bg-white rounded-t-[5rem] md:rounded-[5rem] p-12 w-full max-w-sm shadow-2xl animate-slide-up">
             <h2 className="text-3xl font-black text-primary mb-10 tracking-tighter uppercase text-center italic">Zahlung: {(cart.reduce((s, i) => s + (i.price * i.quantity), 0)).toFixed(2)} €</h2>
             <input type="number" value={cashGiven} onChange={e => setCashGiven(e.target.value)} placeholder="0.00" className="w-full p-10 bg-gray-100 rounded-[2.5rem] text-6xl font-black mb-8 text-center outline-none focus:ring-8 focus:ring-primary/5" autoFocus />
@@ -642,7 +722,7 @@ export default function App() {
       )}
 
       {selectedTransaction && (
-        <div className="fixed inset-0 bg-primary/95 backdrop-blur-3xl flex items-center justify-center p-6 z-50">
+        <div className="fixed inset-0 bg-primary/95 backdrop-blur-3xl flex items-center justify-center p-6 z-50 no-print">
           <div className="bg-white rounded-[4rem] p-10 w-full max-w-md shadow-2xl animate-scale-in">
             <div className="flex items-center justify-between mb-8 border-b pb-6 border-gray-100">
               <h2 className="text-2xl font-black uppercase text-primary tracking-tighter flex items-center gap-3"><Receipt size={28} /> Kassenbon</h2>
@@ -659,7 +739,7 @@ export default function App() {
               <div className="flex justify-between text-4xl font-black text-gray-800 mt-4"><span>TOTAL</span><span>{selectedTransaction.total_amount.toFixed(2)} €</span></div>
             </div>
             <div className="grid grid-cols-2 gap-4 mt-10">
-              <button onClick={() => window.print()} className="bg-gray-100 py-5 rounded-3xl font-black uppercase text-[10px] text-gray-500 flex items-center justify-center gap-2"><Printer size={18} /> Bon drucken</button>
+              <button onClick={() => window.print()} className="bg-gray-100 py-5 rounded-3xl font-black uppercase text-[10px] text-gray-500 hover:bg-gray-200 transition-all flex items-center justify-center gap-2"><Printer size={18} /> Bon drucken</button>
               <button onClick={() => setSelectedTransaction(null)} className="bg-primary text-white py-5 rounded-3xl font-black uppercase text-[10px] tracking-widest shadow-xl">Schließen</button>
             </div>
           </div>
@@ -668,6 +748,48 @@ export default function App() {
     </div>
   );
 }
+
+// HILFSKOMPONENTEN
+const FlyingItem = ({ startX, startY, targetX, targetY, img, onComplete }) => {
+  const [style, setStyle] = useState({
+    left: startX,
+    top: startY,
+    transform: 'translate(-50%, -50%) scale(1)',
+    opacity: 1,
+  });
+
+  useEffect(() => {
+    const timer1 = setTimeout(() => {
+      setStyle({
+        left: targetX,
+        top: targetY,
+        transform: 'translate(-50%, -50%) scale(0.1)',
+        opacity: 0.3,
+      });
+    }, 50);
+
+    const timer2 = setTimeout(() => {
+      onComplete();
+    }, 500);
+
+    return () => { clearTimeout(timer1); clearTimeout(timer2); };
+  }, [startX, startY, targetX, targetY, onComplete]);
+
+  return (
+    <div
+      className="fixed z-[9999] pointer-events-none rounded-[2rem] overflow-hidden border-2 border-primary shadow-2xl transition-all duration-500"
+      style={{
+        ...style,
+        width: '80px',
+        height: '80px',
+        position: 'fixed',
+        transitionTimingFunction: 'cubic-bezier(0.25, 1, 0.5, 1)'
+      }}
+    >
+      {img ? <img src={img} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-primary" />}
+    </div>
+  );
+};
 
 const LoadingScreen = () => (
   <div className="min-h-screen bg-primary flex flex-col items-center justify-center text-white p-4 relative overflow-hidden text-center">
@@ -678,8 +800,8 @@ const LoadingScreen = () => (
   </div>
 );
 
-const NavItem = ({ active, onClick, icon, label, closeSidebar }) => (
-  <button onClick={() => { onClick(); closeSidebar?.(); }} className={`w-full flex items-center gap-5 p-4 rounded-2xl transition-all duration-300 ${active ? 'bg-blue-800 text-secondary shadow-xl translate-x-2' : 'hover:bg-blue-800/30 text-blue-300'}`}>
+const NavItem = ({ active, onClick, icon, label }) => (
+  <button onClick={onClick} className={`w-full flex items-center gap-5 p-4 rounded-2xl transition-all duration-300 ${active ? 'bg-blue-800 text-secondary shadow-xl translate-x-2' : 'hover:bg-blue-800/30 text-blue-300'}`}>
     {React.cloneElement(icon, { size: 20, strokeWidth: 3 })}
     <span className="font-black text-[10px] uppercase tracking-widest">{label}</span>
   </button>
@@ -700,8 +822,7 @@ function LoginScreen({ setSession, addToast }) {
   const handleLogin = async (e) => {
     e.preventDefault(); setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) addToast('error', 'Login fehlgeschlagen');
-    else addToast('success', 'Willkommen!');
+    if (error) { addToast('error', 'Login fehlgeschlagen'); } else { addToast('success', 'Willkommen!'); }
     setLoading(false);
   };
   return (
