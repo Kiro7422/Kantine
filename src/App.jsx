@@ -10,6 +10,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { QRCodeSVG } from 'qrcode.react';
 
 export default function App() {
+  // --- KUNDEN-MENÜ LOGIK (QR SCAN) ---
   const queryParams = new URLSearchParams(window.location.search);
   const isCustomerMenu = queryParams.get('view') === 'menu';
 
@@ -279,11 +280,12 @@ export default function App() {
 
   if (isLoading) return <LoadingScreen />;
 
+  // --- HIER WURDE DAS SCROLLEN FÜR DAS KUNDENMENÜ REPARIERT ---
   if (view === 'customer-menu') {
     return (
-      <div className="min-h-screen bg-white font-sans p-6 text-center">
+      <div className="h-screen overflow-y-auto bg-white font-sans p-6 pb-24 text-center">
         <img src="/kantineapplogo.png" className="w-24 h-24 mx-auto mb-6" />
-        <h1 className="text-3xl font-black text-primary uppercase tracking-tighter mb-10 italic">Produkte</h1>
+        <h1 className="text-3xl font-black text-primary uppercase tracking-tighter mb-10 italic">Speisekarte</h1>
         <div className="grid grid-cols-1 gap-4 max-w-xl mx-auto">
           {products.map(p => (
             <div key={p.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-[2.5rem] border shadow-sm text-left">
@@ -450,7 +452,6 @@ export default function App() {
                     <Input value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} placeholder="Produktname" />
                     <Input type="number" value={newProduct.price} onChange={e => setNewProduct({ ...newProduct, price: e.target.value })} placeholder="Preis" />
 
-                    {/* KATEGORIE MIT SCHICKEN CHIPS */}
                     <div className="space-y-2">
                       <Input
                         value={newProduct.category}
@@ -707,7 +708,8 @@ export default function App() {
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center p-20 bg-white text-black text-center">
             <img src="/kantineapplogo.png" className="w-40 h-40 mb-10 object-contain" />
-            <h1 className="text-6xl font-black uppercase mb-4 tracking-tighter text-primary">سكان للمنتجات</h1>
+            <h1 className="text-6xl font-black uppercase mb-4 tracking-tighter text-primary">اعمل اسكان للكود و شوف</h1>
+            <p className="text-2xl font-bold text-gray-500 mb-16 uppercase tracking-[0.3em]">Scannen & Menü ansehen</p>
             <div className="border-[20px] border-primary p-12 rounded-[5rem] shadow-none bg-white">
               <QRCodeSVG value={`${window.location.origin}?view=menu`} size={500} level="H" />
             </div>
@@ -825,8 +827,8 @@ const LoadingScreen = () => (
   </div>
 );
 
-const NavItem = ({ active, onClick, icon, label }) => (
-  <button onClick={onClick} className={`w-full flex items-center gap-5 p-4 rounded-2xl transition-all duration-300 ${active ? 'bg-blue-800 text-secondary shadow-xl translate-x-2' : 'hover:bg-blue-800/30 text-blue-300'}`}>
+const NavItem = ({ active, onClick, icon, label, closeSidebar }) => (
+  <button onClick={() => { onClick(); closeSidebar?.(); }} className={`w-full flex items-center gap-5 p-4 rounded-2xl transition-all duration-300 ${active ? 'bg-blue-800 text-secondary shadow-xl translate-x-2' : 'hover:bg-blue-800/30 text-blue-300'}`}>
     {React.cloneElement(icon, { size: 20, strokeWidth: 3 })}
     <span className="font-black text-[10px] uppercase tracking-widest">{label}</span>
   </button>
@@ -847,7 +849,8 @@ function LoginScreen({ setSession, addToast }) {
   const handleLogin = async (e) => {
     e.preventDefault(); setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) { addToast('error', 'Login fehlgeschlagen'); } else { addToast('success', 'Willkommen!'); }
+    if (error) addToast('error', 'Login fehlgeschlagen');
+    else addToast('success', 'Willkommen!');
     setLoading(false);
   };
   return (
