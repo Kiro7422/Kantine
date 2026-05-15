@@ -707,7 +707,7 @@ export default function App() {
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center p-20 bg-white text-black text-center">
             <img src="/kantineapplogo.png" className="w-40 h-40 mb-10 object-contain" />
-            <h1 className="text-6xl font-black uppercase mb-4 tracking-tighter text-primary">اعمل اسكان للكود و شوف</h1>
+            <h1 className="text-6xl font-black uppercase mb-4 tracking-tighter text-primary">سكان للمنتجات</h1>
             <div className="border-[20px] border-primary p-12 rounded-[5rem] shadow-none bg-white">
               <QRCodeSVG value={`${window.location.origin}?view=menu`} size={500} level="H" />
             </div>
