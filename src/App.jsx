@@ -46,8 +46,9 @@ export default function App() {
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [transactionItems, setTransactionItems] = useState([]);
   const [cashGiven, setCashGiven] = useState('');
+  const [enlargedImage, setEnlargedImage] = useState(null); // State für vergrößertes Kunden-Bild
 
-  // Animations-States
+  // Animations-States (Für das Fly-to-Cart Feature)
   const [animations, setAnimations] = useState([]);
   const [cartBump, setCartBump] = useState(false);
 
@@ -136,7 +137,7 @@ export default function App() {
     fetchLogs();
   };
 
-  // --- KASSEN FUNKTIONEN ---
+  // --- KASSEN FUNKTIONEN (Mit Animation) ---
   const handleAddToCart = (p, e) => {
     setCart(prev => {
       const ex = prev.find(i => i.id === p.id);
@@ -280,26 +281,46 @@ export default function App() {
 
   if (isLoading) return <LoadingScreen />;
 
-  // --- HIER WURDE DAS SCROLLEN FÜR DAS KUNDENMENÜ REPARIERT ---
+  // --- KUNDEN-MENÜ (Mit Vollbild-Bilder Funktion & ohne Text-Abschneiden) ---
   if (view === 'customer-menu') {
     return (
-      <div className="h-screen overflow-y-auto bg-white font-sans p-6 pb-24 text-center">
+      <div className="h-screen overflow-y-auto bg-white font-sans p-6 pb-24 text-center relative">
         <img src="/kantineapplogo.png" className="w-24 h-24 mx-auto mb-6" />
         <h1 className="text-3xl font-black text-primary uppercase tracking-tighter mb-10 italic">Speisekarte</h1>
+
         <div className="grid grid-cols-1 gap-4 max-w-xl mx-auto">
           {products.map(p => (
-            <div key={p.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-[2.5rem] border shadow-sm text-left">
-              <div className="w-20 h-20 rounded-3xl bg-white overflow-hidden border flex-shrink-0">
+            <div key={p.id} className="flex items-center gap-5 p-5 bg-gray-50 rounded-[2.5rem] border shadow-sm text-left">
+              <button
+                onClick={() => p.image_url && setEnlargedImage(p.image_url)}
+                className="w-24 h-24 rounded-3xl bg-white overflow-hidden border flex-shrink-0 relative group focus:outline-none"
+              >
                 {p.image_url ? <img src={p.image_url} className="w-full h-full object-cover" /> : <ImageIcon className="w-full h-full p-6 text-gray-200" />}
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-800 text-sm uppercase">{p.name}</h3>
-                <p className="text-primary font-black text-xl">{p.price.toFixed(2)} €</p>
-                {p.categories?.name && <span className="text-[8px] bg-white px-2 py-0.5 rounded-full text-gray-400 font-black border uppercase tracking-widest">{p.categories.name}</span>}
+                {p.image_url && (
+                  <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Search className="text-white drop-shadow-md" size={24} />
+                  </div>
+                )}
+              </button>
+
+              <div className="flex-1 min-w-0">
+                <h3 className="font-bold text-gray-800 text-sm uppercase break-words leading-tight">{p.name}</h3>
+                <p className="text-primary font-black text-xl mt-1">{p.price.toFixed(2)} €</p>
+                {p.categories?.name && <span className="text-[8px] bg-white px-3 py-1 rounded-full text-gray-400 font-black border uppercase tracking-widest inline-block mt-2 shadow-sm">{p.categories.name}</span>}
               </div>
             </div>
           ))}
         </div>
+
+        {/* MODAL FÜR BILD-VERGRÖßERUNG */}
+        {enlargedImage && (
+          <div className="fixed inset-0 bg-black/95 z-[9999] flex items-center justify-center p-6 transition-all" onClick={() => setEnlargedImage(null)}>
+            <button className="absolute top-6 right-6 text-white bg-white/20 hover:bg-white/40 p-3 rounded-full transition-all backdrop-blur-md">
+              <X size={28} />
+            </button>
+            <img src={enlargedImage} className="max-w-full max-h-[85vh] object-contain rounded-[2rem] shadow-2xl" onClick={e => e.stopPropagation()} />
+          </div>
+        )}
       </div>
     );
   }
@@ -317,7 +338,7 @@ export default function App() {
             background-color: white !important; 
           }
           body::before { 
-            display: none !important; /* Blockiert den blauen Hintergrund vom iPhone-Trick */
+            display: none !important; 
           }
           body * { 
             visibility: hidden !important; 
@@ -391,13 +412,14 @@ export default function App() {
                   ))}
                 </div>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 overflow-y-auto pr-2 pb-24">
+                  {/* FIX: Die Buttons wachsen jetzt mit dem Text mit und schneiden nichts ab (h-auto) */}
                   {products.filter(p => filterCat === 'All' || p.categories?.name === filterCat).map(p => (
-                    <button key={p.id} onClick={(e) => handleAddToCart(p, e)} className="bg-white p-4 rounded-[2rem] shadow-sm border-2 border-transparent hover:border-secondary hover:shadow-xl transition-all active:scale-95 flex flex-col items-center relative overflow-hidden group">
-                      <div className="w-full aspect-square bg-gray-50 rounded-3xl overflow-hidden mb-3 flex items-center justify-center border group-active:scale-90 transition-transform">
+                    <button key={p.id} onClick={(e) => handleAddToCart(p, e)} className="bg-white p-4 rounded-[2rem] shadow-sm border-2 border-transparent hover:border-secondary hover:shadow-xl transition-all active:scale-95 flex flex-col items-center relative group h-auto w-full">
+                      <div className="w-full aspect-square bg-gray-50 rounded-3xl overflow-hidden mb-3 flex items-center justify-center border group-active:scale-90 transition-transform shrink-0">
                         {p.image_url ? <img src={p.image_url} className="w-full h-full object-cover" /> : <ImageIcon className="text-gray-200" size={24} />}
                       </div>
-                      <span className="font-bold text-gray-800 text-[10px] text-center line-clamp-1 uppercase">{p.name}</span>
-                      <span className="text-primary font-black text-sm">{p.price.toFixed(2)} €</span>
+                      <span className="font-bold text-gray-800 text-[10px] text-center uppercase break-words w-full leading-tight">{p.name}</span>
+                      <span className="text-primary font-black text-sm mt-auto pt-2">{p.price.toFixed(2)} €</span>
                     </button>
                   ))}
                 </div>
