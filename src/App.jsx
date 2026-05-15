@@ -283,7 +283,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-white font-sans p-6 text-center">
         <img src="/kantineapplogo.png" className="w-24 h-24 mx-auto mb-6" />
-        <h1 className="text-3xl font-black text-primary uppercase tracking-tighter mb-10 italic">Speisekarte</h1>
+        <h1 className="text-3xl font-black text-primary uppercase tracking-tighter mb-10 italic">Produkte</h1>
         <div className="grid grid-cols-1 gap-4 max-w-xl mx-auto">
           {products.map(p => (
             <div key={p.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-[2.5rem] border shadow-sm text-left">
