@@ -4,43 +4,74 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/png" href="/kantineapplogo.png" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Kantine der Hl. Maria und des Hl. Philopater</title>
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="manifest" href="/manifest.json" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Kantine" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="apple-touch-icon" href="/kantineapplogo.png" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/kantineapplogo.png" />
 
   <style>
     html,
     body {
       margin: 0;
+      padding: 0;
       height: 100%;
       background: #1e3a8a;
-      overscroll-behavior: none;
+      /* Dein Kantinen-Blau */
+      overflow: hidden;
     }
 
-    #root {
-      height: 100%;
+    /* Dieser Style sorgt dafür, dass der Ladebildschirm sofort erscheint */
+    .initial-loader {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
       background: #1e3a8a;
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      text-align: center;
     }
 
-    /* iOS Safari Fix gegen weißen/blauen Flash */
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      background: #1e3a8a;
-      z-index: -1;
+    .initial-loader img {
+      width: 160px;
+      height: 160px;
+      margin-bottom: 24px;
+      animation: pulse 2s infinite ease-in-out;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.7;
+        transform: scale(0.95);
+      }
     }
   </style>
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div class="initial-loader">
+      <img src="/kantineapplogo.png" alt="Logo" />
+      <h1
+        style="font-size: 24px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; font-style: italic; margin: 0 20px;">
+        Kantine der<br> Hl. Maria & Philopater
+      </h1>
+      <p
+        style="margin-top: 40px; font-weight: 900; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5em; opacity: 0.5;">
+        Wird vorbereitet...
+      </p>
+    </div>
+  </div>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 

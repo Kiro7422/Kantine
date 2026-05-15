@@ -4,12 +4,11 @@ import { createClient } from '@supabase/supabase-js';
 import {
   ShoppingCart, LogOut, Plus, Camera, Trash2, Edit, TrendingUp, Users, List,
   Clock, Filter, Shield, CheckCircle, User, Menu, X, ChevronRight, Receipt,
-  AlertCircle, Info, Star, Tag, ShieldAlert, QrCode, Printer, Image as ImageIcon, Search
+  AlertCircle, Info, Star, Tag, ShieldAlert, QrCode, Printer, Image as ImageIcon, Search, Activity
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { QRCodeSVG } from 'qrcode.react';
-document.documentElement.style.backgroundColor = "#1e3a8a";
-document.body.style.backgroundColor = "#1e3a8a";
+
 export default function App() {
   // --- KUNDEN-MENÜ LOGIK (QR SCAN) ---
   const queryParams = new URLSearchParams(window.location.search);
@@ -19,7 +18,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState(null);
   const [view, setView] = useState(isCustomerMenu ? 'customer-menu' : 'pos');
-  const [userRole, setUserRole] = useState('staff'); // superadmin, admin, staff
+  const [userRole, setUserRole] = useState('staff');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Daten-States
@@ -28,8 +27,9 @@ export default function App() {
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [logs, setLogs] = useState([]);
 
-  // Formular- & Filter-States
+  // Formular-States
   const [newProduct, setNewProduct] = useState({ name: '', price: '', category: '' });
   const [editingProductId, setEditingProductId] = useState(null);
   const [employeeForm, setEmployeeForm] = useState({ email: '', password: '' });
@@ -52,33 +52,41 @@ export default function App() {
       try {
         if (!isCustomerMenu) {
           const { data } = await supabase.auth.getSession();
-
           if (data.session) {
             setSession(data.session);
             await fetchUserRole(data.session.user.id);
-          } else {
-            setSession(null);
           }
         }
-
         await refreshAllData();
-
       } catch (err) {
-        console.error(err);
+        console.error("Init Error:", err);
+      } finally {
+        // Mindestens 1,5 Sekunden anzeigen für den Übergang
+        setTimeout(() => setIsLoading(false), 1500);
       }
     };
 
     init();
 
-    // ⭐ FIX: mindestens 4 Sekunden LoadingScreen
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 4000);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) {
+        fetchUserRole(session.user.id);
+        refreshAllData();
+      }
+    });
 
-    return () => clearTimeout(timer);
+    return () => subscription.unsubscribe();
   }, []);
+
   const refreshAllData = async () => {
-    await Promise.all([fetchProducts(), fetchTransactions(), fetchCategories(), fetchEmployees()]);
+    await Promise.all([
+      fetchProducts(),
+      fetchTransactions(),
+      fetchCategories(),
+      fetchEmployees(),
+      fetchLogs()
+    ]);
   };
 
   const fetchUserRole = async (uid) => {
@@ -106,16 +114,28 @@ export default function App() {
     if (data) setEmployees(data);
   };
 
-  // --- RECHTE-LOGIK ---
+  const fetchLogs = async () => {
+    const { data } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(100);
+    if (data) setLogs(data);
+  };
+
   const isSuper = userRole === 'superadmin';
   const isAdm = userRole === 'admin' || userRole === 'superadmin';
   const isStf = userRole === 'staff' || userRole === 'admin' || userRole === 'superadmin';
 
-  // --- UI HELFER ---
   const addToast = (type, text) => {
     const id = Date.now();
     setToasts(p => [...p, { id, type, text }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3000);
+  };
+
+  const logActivity = async (action, details) => {
+    await supabase.from('activity_logs').insert([{
+      user_email: session?.user?.email || 'Unbekannt',
+      action: action,
+      details: details
+    }]);
+    fetchLogs();
   };
 
   // --- KASSEN FUNKTIONEN ---
@@ -145,12 +165,12 @@ export default function App() {
         await supabase.from('transaction_items').insert([{ transaction_id: tr.id, product_id: item.id, quantity: item.quantity, price_at_time: item.price }]);
         await supabase.from('products').update({ times_sold: (item.times_sold || 0) + item.quantity }).eq('id', item.id);
       }
+      logActivity('Verkauf', `Umsatz: ${total.toFixed(2)} €`);
       addToast('success', 'Verkauf abgeschlossen!');
       setCart([]); setCheckoutModal(false); setCashGiven(''); refreshAllData();
     }
   };
 
-  // --- PRODUKT VERWALTUNG ---
   const handleSaveProduct = async () => {
     if (!newProduct.name || !newProduct.price) return addToast('error', 'Daten unvollständig');
     addToast('info', 'Wird verarbeitet...');
@@ -181,26 +201,36 @@ export default function App() {
       : await supabase.from('products').insert([payload]);
 
     if (!error) {
+      logActivity(editingProductId ? 'Produkt bearbeitet' : 'Produkt erstellt', newProduct.name);
       addToast('success', 'Gespeichert!');
       setNewProduct({ name: '', price: '', category: '' }); setEditingProductId(null); setImagePreview(null); setImageFile(null);
       refreshAllData();
     }
   };
 
-  // --- LÖSCH LOGIK ---
   const confirmDeletion = async () => {
     const { id, type } = deleteConfirm;
     let err;
-    if (type === 'product') err = (await supabase.from('products').delete().eq('id', id)).error;
-    if (type === 'transaction') err = (await supabase.from('transactions').delete().eq('id', id)).error;
-    if (type === 'employee') err = (await supabase.from('employees').delete().eq('id', id)).error;
+    if (type === 'product') {
+      const pName = products.find(x => x.id === id)?.name;
+      err = (await supabase.from('products').delete().eq('id', id)).error;
+      if (!err) logActivity('Produkt gelöscht', pName);
+    }
+    if (type === 'transaction') {
+      err = (await supabase.from('transactions').delete().eq('id', id)).error;
+      if (!err) logActivity('Kauf storniert', `ID: ${id.slice(0, 8)}`);
+    }
+    if (type === 'employee') {
+      const eMail = employees.find(x => x.id === id)?.email;
+      err = (await supabase.from('employees').delete().eq('id', id)).error;
+      if (!err) logActivity('Mitarbeiter gelöscht', eMail);
+    }
 
     if (!err) { addToast('success', 'Gelöscht'); refreshAllData(); if (type === 'transaction') setSelectedTransaction(null); }
-    else addToast('error', 'Löschen gesperrt (Daten werden noch genutzt)');
+    else addToast('error', 'Löschen gesperrt');
     setDeleteConfirm({ open: false, id: null, type: null });
   };
 
-  // --- PERSONAL ---
   const handleCreateEmployee = async (e) => {
     e.preventDefault();
     if (!isSuper) return;
@@ -213,7 +243,6 @@ export default function App() {
     } else addToast('error', error.message);
   };
 
-  // --- STATISTIK BERECHNUNG ---
   const filteredTr = transactions.filter(t => t.created_at?.startsWith(statsMonth));
   const monthTotal = filteredTr.reduce((s, t) => s + (t.total_amount || 0), 0);
   const top5 = [...products].sort((a, b) => b.times_sold - a.times_sold).slice(0, 5);
@@ -223,15 +252,13 @@ export default function App() {
     return { name: d, Umsatz: val };
   });
 
-  // --- RENDERING ---
   if (isLoading) return <LoadingScreen />;
 
-  // SPEZIAL-ANSICHT: QR-MENÜ FÜR KUNDEN
   if (view === 'customer-menu') {
     return (
       <div className="min-h-screen bg-white font-sans p-6 text-center">
         <img src="/kantineapplogo.png" className="w-24 h-24 mx-auto mb-6" />
-        <h1 className="text-3xl font-black text-primary uppercase tracking-tighter mb-10 italic">Speisekarte</h1>
+        <h1 className="text-3xl font-black text-primary uppercase mb-10 italic">Speisekarte</h1>
         <div className="grid grid-cols-1 gap-4 max-w-xl mx-auto">
           {products.map(p => (
             <div key={p.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-[2.5rem] border shadow-sm text-left">
@@ -254,8 +281,6 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden select-none font-sans">
-
-      {/* TOAST SYSTEM */}
       <div className="fixed top-6 right-6 z-[100] space-y-3 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className={`px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-slide-left pointer-events-auto border-l-8 bg-white ${t.type === 'success' ? 'text-green-600 border-green-600' : 'text-red-600 border-red-600'}`}>
@@ -265,51 +290,19 @@ export default function App() {
         ))}
       </div>
 
-      {/* SIDEBAR (SUPER-KOMPAKT GEGEN SCROLLEN) */}
+      {/* SIDEBAR */}
       <div className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:relative md:translate-x-0 transition duration-300 ease-in-out z-30 w-52 bg-primary text-white flex flex-col no-print`}>
         <div className="p-4 border-b border-blue-800 flex flex-col items-center gap-2">
           <img src="/kantineapplogo.png" className="w-12 h-12 object-contain drop-shadow-xl" />
           <span className="font-black text-[9px] uppercase text-center leading-tight tracking-widest">Kantine der Hl.Maria & Hl.Philopater</span>
         </div>
         <nav className="flex-1 p-2 space-y-1 mt-2">
-          <NavItem
-            active={view === 'pos'}
-            onClick={() => setView('pos')}
-            closeSidebar={() => setIsSidebarOpen(false)}
-            icon={<ShoppingCart />}
-            label="Kasse"
-          />          {isStf && <NavItem
-            active={view === 'products'}
-            onClick={() => setView('products')}
-            closeSidebar={() => setIsSidebarOpen(false)}
-            icon={<List />}
-            label="Bestand"
-          />}
-          {isAdm && <NavItem
-            active={view === 'statistik'}
-            onClick={() => setView('statistik')}
-            closeSidebar={() => setIsSidebarOpen(false)}
-            icon={<TrendingUp />}
-            label="Statistik"
-          />}
-          {isStf && (
-            <NavItem
-              active={view === 'qr'}
-              onClick={() => setView('qr')}
-              closeSidebar={() => setIsSidebarOpen(false)}
-              icon={<QrCode />}
-              label="QR-Code"
-            />
-          )}
-          {isSuper && (
-            <NavItem
-              active={view === 'admin'}
-              onClick={() => setView('admin')}
-              closeSidebar={() => setIsSidebarOpen(false)}
-              icon={<ShieldAlert />}
-              label="Personal"
-            />
-          )}
+          <NavItem active={view === 'pos'} onClick={() => setView('pos')} closeSidebar={() => setIsSidebarOpen(false)} icon={<ShoppingCart />} label="Kasse" />
+          {isStf && <NavItem active={view === 'products'} onClick={() => setView('products')} closeSidebar={() => setIsSidebarOpen(false)} icon={<List />} label="Bestand" />}
+          {isAdm && <NavItem active={view === 'statistik'} onClick={() => setView('statistik')} closeSidebar={() => setIsSidebarOpen(false)} icon={<TrendingUp />} label="Statistik" />}
+          {isStf && <NavItem active={view === 'qr'} onClick={() => setView('qr')} closeSidebar={() => setIsSidebarOpen(false)} icon={<QrCode />} label="QR-Code" />}
+          {isSuper && <NavItem active={view === 'logs'} onClick={() => setView('logs')} closeSidebar={() => setIsSidebarOpen(false)} icon={<Activity />} label="Aktivitäten" />}
+          {isSuper && <NavItem active={view === 'admin'} onClick={() => setView('admin')} closeSidebar={() => setIsSidebarOpen(false)} icon={<ShieldAlert />} label="Personal" />}
         </nav>
         <button onClick={() => supabase.auth.signOut()} className="m-4 p-3 rounded-xl bg-red-500/10 text-red-400 font-bold flex items-center gap-3 hover:bg-red-500 hover:text-white transition-all uppercase text-[9px] tracking-widest">
           <LogOut size={14} /> Abmelden
@@ -326,8 +319,6 @@ export default function App() {
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-8 no-print">
-
-          {/* POS (KASSE) */}
           {view === 'pos' && (
             <div className="h-full flex flex-col md:flex-row gap-8">
               <div className="flex-1 flex flex-col overflow-hidden">
@@ -374,7 +365,6 @@ export default function App() {
             </div>
           )}
 
-          {/* BESTAND (PRODUKTE) */}
           {view === 'products' && isStf && (
             <div className="max-w-4xl mx-auto space-y-10">
               <div className={`p-8 rounded-[3rem] shadow-xl border-4 ${editingProductId ? 'bg-yellow-50 border-yellow-400' : 'bg-white border-transparent'}`}>
@@ -440,7 +430,6 @@ export default function App() {
             </div>
           )}
 
-          {/* STATISTIK */}
           {view === 'statistik' && isAdm && (
             <div className="space-y-8 pb-10">
               <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-3xl shadow-sm gap-4">
@@ -452,7 +441,6 @@ export default function App() {
                 <div className="bg-white p-8 rounded-[3rem] shadow-sm border"><p className="text-[10px] uppercase font-black text-gray-400 mb-1">Verkäufe</p><h2 className="text-4xl font-black">{filteredTr.length}</h2></div>
                 <div className="bg-secondary p-8 rounded-[3rem] text-primary shadow-xl"><p className="text-[10px] uppercase font-black opacity-60">Top Produkt</p><h2 className="text-xl font-black truncate uppercase">{products[0]?.name || '-'}</h2></div>
               </div>
-
               <div className="bg-white p-8 rounded-[3.5rem] shadow-xl border h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData}>
@@ -464,7 +452,6 @@ export default function App() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="bg-white rounded-[3rem] shadow-xl p-8 border">
                   <h3 className="font-black text-[10px] uppercase tracking-widest text-gray-400 mb-6">Top 5 Renner</h3>
@@ -499,7 +486,6 @@ export default function App() {
             </div>
           )}
 
-          {/* QR-CODE GENERATOR */}
           {view === 'qr' && isStf && (
             <div className="max-w-xl mx-auto text-center no-print">
               <div className="bg-white p-12 rounded-[4rem] shadow-2xl flex flex-col items-center border">
@@ -513,7 +499,6 @@ export default function App() {
             </div>
           )}
 
-          {/* PERSONAL VERWALTUNG (NUR SUPERADMIN) */}
           {view === 'admin' && isSuper && (
             <div className="max-w-4xl mx-auto space-y-10">
               <div className="bg-white p-10 rounded-[4rem] shadow-xl border flex flex-col md:flex-row gap-10 items-center">
@@ -522,8 +507,8 @@ export default function App() {
                   <p className="text-gray-400 text-[10px] uppercase font-bold mt-2">Zugänge für Mitarbeiter anlegen.</p>
                 </div>
                 <form onSubmit={handleCreateEmployee} className="w-full md:w-80 space-y-3">
-                  <Input value={employeeForm.email} onChange={e => setEmployeeForm({ ...employeeForm, email: e.target.value })} placeholder="Email (z.B. kasse2@kirche.de)" />
-                  <Input type="password" value={employeeForm.password} onChange={e => setEmployeeForm({ ...employeeForm, password: e.target.value })} placeholder="Sicheres Passwort" />
+                  <Input value={employeeForm.email} onChange={e => setEmployeeForm({ ...employeeForm, email: e.target.value })} placeholder="Email" />
+                  <Input type="password" value={employeeForm.password} onChange={e => setEmployeeForm({ ...employeeForm, password: e.target.value })} placeholder="Passwort" />
                   <button type="submit" className="w-full bg-primary text-white py-4 rounded-2xl font-black text-[10px] tracking-widest uppercase shadow-xl hover:-translate-y-1 transition-all">Erstellen</button>
                 </form>
               </div>
@@ -542,7 +527,7 @@ export default function App() {
                               const nr = e.target.value;
                               await supabase.from('employees').update({ role: nr }).eq('id', emp.id);
                               fetchEmployees(); addToast('success', 'Rolle geändert');
-                            }} className="bg-gray-100 border-none text-[10px] font-black uppercase rounded-xl p-3 outline-none focus:ring-4 focus:ring-primary/10">
+                            }} className="bg-gray-100 border-none text-[10px] font-black uppercase rounded-xl p-3 outline-none">
                               <option value="staff">Staff</option>
                               <option value="admin">Admin</option>
                               <option value="superadmin">Superadmin</option>
@@ -558,22 +543,49 @@ export default function App() {
             </div>
           )}
 
+          {view === 'logs' && isSuper && (
+            <div className="max-w-5xl mx-auto space-y-6">
+              <h2 className="text-2xl font-black uppercase tracking-tighter italic text-gray-800">Aktivitäts-Log</h2>
+              <div className="bg-white rounded-[2.5rem] shadow-xl overflow-hidden border">
+                <div className="p-4 bg-gray-50 border-b font-black text-[9px] uppercase text-gray-400">Letzte 100 Aktionen</div>
+                <div className="divide-y">
+                  {logs.length === 0 ? <p className="p-10 text-center text-gray-300 font-bold">Noch keine Aktivitäten.</p> :
+                    logs.map(log => (
+                      <div key={log.id} className="p-4 flex justify-between items-center hover:bg-gray-50 transition-all">
+                        <div className="flex items-center gap-4">
+                          <div className={`p-2 rounded-xl ${log.action.includes('gelöscht') || log.action.includes('storniert') ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                            <Activity size={16} />
+                          </div>
+                          <div>
+                            <p className="font-black text-gray-800 text-xs uppercase">{log.action}</p>
+                            <p className="text-[10px] text-gray-400 font-bold italic">{log.details}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-black text-primary text-[9px]">{log.user_email}</p>
+                          <p className="text-[8px] text-gray-300 uppercase font-bold">{new Date(log.created_at).toLocaleString('de-DE')}</p>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
 
-      {/* --- PRINT AREA (VERBESSERT FÜR VOLLBILD-DRUCK) --- */}
+      {/* --- PRINT AREA (FÜR POSTER UND BON) --- */}
       <div className="hidden print:flex fixed inset-0 bg-white z-[999] flex-col items-center justify-center text-center p-0 m-0">
         {selectedTransaction ? (
-          /* Bereich für Kassenbon (schmal) */
-          <div className="w-[80mm] mx-auto p-4 text-black font-mono">
-            <h1 className="text-xl font-black mb-2 uppercase">Kirchen-Kantine</h1>
-            <p className="text-xs italic mb-4">Hl. Maria & Philopater</p>
-            <div className="border-t border-b border-black py-2 mb-4 text-[10px] text-left">
+          <div className="w-[80mm] mx-auto p-4 text-black font-mono text-left">
+            <h1 className="text-xl font-black text-center mb-2 uppercase">Kirchen-Kantine</h1>
+            <p className="text-xs italic text-center mb-4">Hl. Maria & Philopater</p>
+            <div className="border-t border-b border-black py-2 mb-4 text-[10px]">
               <p>Datum: {new Date(selectedTransaction.created_at).toLocaleDateString('de-DE')}</p>
               <p>Zeit: {new Date(selectedTransaction.created_at).toLocaleTimeString('de-DE')}</p>
               <p>Bon-ID: {selectedTransaction.id.slice(0, 8)}</p>
             </div>
-            <div className="mb-4 text-[10px] text-left">
+            <div className="mb-4 text-[10px]">
               {transactionItems.map((item, i) => (
                 <div key={i} className="flex justify-between">
                   <span>{item.quantity}x {item.products?.name}</span>
@@ -585,40 +597,28 @@ export default function App() {
               <span>GESAMT</span>
               <span>{selectedTransaction.total_amount.toFixed(2)}€</span>
             </div>
-            <div className="mt-4 text-[8px] flex justify-between italic">
-              <span>Gegeben: {selectedTransaction.cash_given.toFixed(2)}€</span>
-              <span>Rückgeld: {selectedTransaction.change_returned.toFixed(2)}€</span>
-            </div>
-            <p className="mt-10 text-[10px] font-bold uppercase tracking-widest">Vielen Dank für Ihren Besuch!</p>
+            <p className="mt-10 text-[10px] font-bold uppercase text-center">Gott segne Sie!</p>
           </div>
         ) : (
-          /* Bereich für das Speisekarten-Poster (A4) */
-          <div className="w-full h-full flex flex-col items-center justify-center p-20 bg-white text-black">
+          <div className="w-full h-full flex flex-col items-center justify-center p-20 bg-white text-black text-center">
             <img src="/kantineapplogo.png" className="w-40 h-40 mb-10 object-contain" />
             <h1 className="text-6xl font-black uppercase mb-4 tracking-tighter text-primary">اعمل اسكان للكود و شوف</h1>
-
-            <div className="border-[20px] border-primary p-12 rounded-[5rem] shadow-none">
-              <QRCodeSVG
-                value={`${window.location.origin}?view=menu`}
-                size={500}
-                level="H"
-              />
+            <div className="border-[20px] border-primary p-12 rounded-[5rem]">
+              <QRCodeSVG value={`${window.location.origin}?view=menu`} size={500} level="H" />
             </div>
-
-
           </div>
         )}
       </div>
 
       {/* --- MODALS --- */}
       {deleteConfirm.open && (
-        <div className="fixed inset-0 bg-primary/95 backdrop-blur-3xl flex items-center justify-center p-6 z-[200] no-print">
+        <div className="fixed inset-0 bg-primary/95 backdrop-blur-3xl flex items-center justify-center p-6 z-[200]">
           <div className="bg-white rounded-[4rem] p-12 max-w-sm w-full text-center shadow-2xl animate-scale-in">
             <AlertCircle size={54} className="mx-auto mb-6 text-red-500 animate-pulse" />
             <h2 className="text-3xl font-black mb-4 uppercase tracking-tighter text-gray-800">Löschen?</h2>
             <p className="text-gray-400 font-bold text-[10px] mb-10 uppercase tracking-widest">Dies kann nicht rückgängig gemacht werden!</p>
             <div className="flex flex-col gap-4">
-              <button onClick={confirmDeletion} className="w-full bg-red-600 text-white py-6 rounded-3xl font-black shadow-2xl shadow-red-200 active:scale-95 transition-all uppercase text-[10px] tracking-widest">JA, LÖSCHEN</button>
+              <button onClick={confirmDeletion} className="w-full bg-red-600 text-white py-6 rounded-3xl font-black shadow-2xl active:scale-95 transition-all uppercase text-[10px]">JA, LÖSCHEN</button>
               <button onClick={() => setDeleteConfirm({ open: false })} className="w-full py-4 text-gray-400 font-black uppercase text-[10px]">Abbrechen</button>
             </div>
           </div>
@@ -626,10 +626,10 @@ export default function App() {
       )}
 
       {checkoutModal && (
-        <div className="fixed inset-0 bg-primary/95 backdrop-blur-3xl flex items-end md:items-center justify-center p-0 md:p-4 z-50 no-print">
+        <div className="fixed inset-0 bg-primary/95 backdrop-blur-3xl flex items-end md:items-center justify-center p-0 md:p-4 z-50">
           <div className="bg-white rounded-t-[5rem] md:rounded-[5rem] p-12 w-full max-w-sm shadow-2xl animate-slide-up">
             <h2 className="text-3xl font-black text-primary mb-10 tracking-tighter uppercase text-center italic">Zahlung: {(cart.reduce((s, i) => s + (i.price * i.quantity), 0)).toFixed(2)} €</h2>
-            <input type="number" value={cashGiven} onChange={e => setCashGiven(e.target.value)} placeholder="0.00" className="w-full p-10 bg-gray-100 rounded-[2.5rem] text-6xl font-black mb-8 text-center outline-none focus:ring-8 focus:ring-primary/5 transition-all" autoFocus />
+            <input type="number" value={cashGiven} onChange={e => setCashGiven(e.target.value)} placeholder="0.00" className="w-full p-10 bg-gray-100 rounded-[2.5rem] text-6xl font-black mb-8 text-center outline-none focus:ring-8 focus:ring-primary/5" autoFocus />
             {parseFloat(cashGiven) >= cart.reduce((s, i) => s + (i.price * i.quantity), 0) && (
               <div className="bg-green-600 text-white p-8 rounded-[3rem] text-center mb-10 shadow-2xl font-black text-5xl animate-bounce-short">{(parseFloat(cashGiven) - cart.reduce((s, i) => s + (i.price * i.quantity), 0)).toFixed(2)} €</div>
             )}
@@ -642,7 +642,7 @@ export default function App() {
       )}
 
       {selectedTransaction && (
-        <div className="fixed inset-0 bg-primary/95 backdrop-blur-3xl flex items-center justify-center p-6 z-50 no-print">
+        <div className="fixed inset-0 bg-primary/95 backdrop-blur-3xl flex items-center justify-center p-6 z-50">
           <div className="bg-white rounded-[4rem] p-10 w-full max-w-md shadow-2xl animate-scale-in">
             <div className="flex items-center justify-between mb-8 border-b pb-6 border-gray-100">
               <h2 className="text-2xl font-black uppercase text-primary tracking-tighter flex items-center gap-3"><Receipt size={28} /> Kassenbon</h2>
@@ -659,7 +659,7 @@ export default function App() {
               <div className="flex justify-between text-4xl font-black text-gray-800 mt-4"><span>TOTAL</span><span>{selectedTransaction.total_amount.toFixed(2)} €</span></div>
             </div>
             <div className="grid grid-cols-2 gap-4 mt-10">
-              <button onClick={() => window.print()} className="bg-gray-100 py-5 rounded-3xl font-black uppercase text-[10px] text-gray-500 hover:bg-gray-200 transition-all flex items-center justify-center gap-2"><Printer size={18} /> Bon drucken</button>
+              <button onClick={() => window.print()} className="bg-gray-100 py-5 rounded-3xl font-black uppercase text-[10px] text-gray-500 flex items-center justify-center gap-2"><Printer size={18} /> Bon drucken</button>
               <button onClick={() => setSelectedTransaction(null)} className="bg-primary text-white py-5 rounded-3xl font-black uppercase text-[10px] tracking-widest shadow-xl">Schließen</button>
             </div>
           </div>
@@ -669,9 +669,8 @@ export default function App() {
   );
 }
 
-// HILFSKOMPONENTEN
 const LoadingScreen = () => (
-  <div className="min-h-screen bg-primary flex flex-col items-center justify-center text-white p-4 relative overflow-hidden">
+  <div className="min-h-screen bg-primary flex flex-col items-center justify-center text-white p-4 relative overflow-hidden text-center">
     <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-blue-800 rounded-full blur-[120px] opacity-30"></div>
     <div className="animate-bounce mb-8 relative z-10"><img src="/kantineapplogo.png" className="w-40 h-40 object-contain drop-shadow-[0_20px_50px_rgba(255,255,255,0.3)]" /></div>
     <h1 className="text-3xl md:text-5xl font-black text-center animate-pulse uppercase tracking-[0.1em] italic leading-tight relative z-10">Kantine der<br /> <span className="text-secondary">Hl. Maria & Philopater</span></h1>
@@ -680,20 +679,9 @@ const LoadingScreen = () => (
 );
 
 const NavItem = ({ active, onClick, icon, label, closeSidebar }) => (
-  <button
-    onClick={() => {
-      onClick();
-      closeSidebar?.();
-    }}
-    className={`w-full flex items-center gap-5 p-4 rounded-2xl transition-all duration-300 ${active
-      ? 'bg-blue-800 text-secondary shadow-xl translate-x-2'
-      : 'hover:bg-blue-800/30 text-blue-300'
-      }`}
-  >
+  <button onClick={() => { onClick(); closeSidebar?.(); }} className={`w-full flex items-center gap-5 p-4 rounded-2xl transition-all duration-300 ${active ? 'bg-blue-800 text-secondary shadow-xl translate-x-2' : 'hover:bg-blue-800/30 text-blue-300'}`}>
     {React.cloneElement(icon, { size: 20, strokeWidth: 3 })}
-    <span className="font-black text-[10px] uppercase tracking-widest">
-      {label}
-    </span>
+    <span className="font-black text-[10px] uppercase tracking-widest">{label}</span>
   </button>
 );
 
@@ -712,7 +700,8 @@ function LoginScreen({ setSession, addToast }) {
   const handleLogin = async (e) => {
     e.preventDefault(); setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) { addToast('error', 'Login fehlgeschlagen'); } else { addToast('success', 'Hi!'); }
+    if (error) addToast('error', 'Login fehlgeschlagen');
+    else addToast('success', 'Willkommen!');
     setLoading(false);
   };
   return (
@@ -724,7 +713,7 @@ function LoginScreen({ setSession, addToast }) {
         <form onSubmit={handleLogin} className="space-y-6">
           <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="EMAIL" className="w-full p-7 bg-gray-100 rounded-[2rem] border-none font-black text-[10px] tracking-widest outline-none focus:ring-8 focus:ring-primary/5" required />
           <input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="PASSWORT" className="w-full p-7 bg-gray-100 rounded-[2rem] border-none font-black text-[10px] tracking-widest outline-none focus:ring-8 focus:ring-primary/5" required />
-          <button type="submit" disabled={loading} className="w-full bg-primary text-white py-8 rounded-[2.5rem] font-black text-[10px] uppercase tracking-widest shadow-2xl hover:scale-[1.03] transition-all">Einloggen</button>
+          <button type="submit" disabled={loading} className="w-full bg-primary text-white py-8 rounded-[2.5rem] font-black text-[10px] uppercase tracking-widest shadow-2xl">Einloggen</button>
         </form>
       </div>
     </div>
