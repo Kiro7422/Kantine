@@ -15,7 +15,7 @@ export default function App() {
   const isCustomerMenu = queryParams.get('view') === 'menu';
 
   // --- HAUPT-STATES ---
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [session, setSession] = useState(null);
   const [view, setView] = useState(isCustomerMenu ? 'customer-menu' : 'pos');
   const [userRole, setUserRole] = useState('staff'); // superadmin, admin, staff
@@ -47,27 +47,28 @@ export default function App() {
 
   // --- INITIALISIERUNG ---
   useEffect(() => {
-    const init = async () => {
+    // 1. Prüfen wer eingeloggt ist
+    const checkUser = async () => {
       if (!isCustomerMenu) {
         const { data } = await supabase.auth.getSession();
         if (data.session) {
           setSession(data.session);
-          await fetchUserRole(data.session.user.id);
+          fetchUserRole(data.session.user.id);
         }
       }
-      await refreshAllData();
-      // 5 Sek Loading Screen nur beim ersten Start
-      setTimeout(() => setIsLoading(false), 3000);
     };
-    init();
 
+    checkUser();
+    refreshAllData(); // Daten sofort im Hintergrund laden
+
+    // 2. Auf Login-Änderungen reagieren
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) fetchUserRole(session.user.id);
     });
+
     return () => subscription.unsubscribe();
   }, []);
-
   const refreshAllData = async () => {
     await Promise.all([fetchProducts(), fetchTransactions(), fetchCategories(), fetchEmployees()]);
   };
@@ -215,7 +216,7 @@ export default function App() {
   });
 
   // --- RENDERING ---
-  if (isLoading) return <LoadingScreen />;
+  //if (isLoading) return <LoadingScreen />;
 
   // SPEZIAL-ANSICHT: QR-MENÜ FÜR KUNDEN
   if (view === 'customer-menu') {
