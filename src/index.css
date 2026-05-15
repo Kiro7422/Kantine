@@ -1,0 +1,36 @@
+@media print {
+
+  /* Alles ausblenden, was NICHT die Druck-Zone ist */
+  body * {
+    visibility: hidden;
+  }
+
+  .print\:flex,
+  .print\:flex * {
+    visibility: visible;
+  }
+
+  .print\:flex {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    display: flex !important;
+  }
+
+  /* Sidebar und Header hart entfernen */
+  nav,
+  header,
+  .no-print {
+    display: none !important;
+  }
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #f3f4f6;
+}
