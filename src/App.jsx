@@ -15,7 +15,7 @@ export default function App() {
   const isCustomerMenu = queryParams.get('view') === 'menu';
 
   // --- HAUPT-STATES ---
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState(null);
   const [view, setView] = useState(isCustomerMenu ? 'customer-menu' : 'pos');
   const [userRole, setUserRole] = useState('staff'); // superadmin, admin, staff
@@ -47,28 +47,27 @@ export default function App() {
 
   // --- INITIALISIERUNG ---
   useEffect(() => {
-    // 1. Prüfen wer eingeloggt ist
-    const checkUser = async () => {
+    const init = async () => {
       if (!isCustomerMenu) {
         const { data } = await supabase.auth.getSession();
         if (data.session) {
           setSession(data.session);
-          fetchUserRole(data.session.user.id);
+          await fetchUserRole(data.session.user.id);
         }
       }
+      await refreshAllData();
+      // 5 Sek Loading Screen nur beim ersten Start
+      setTimeout(() => setIsLoading(false), 800);
     };
+    init();
 
-    checkUser();
-    refreshAllData(); // Daten sofort im Hintergrund laden
-
-    // 2. Auf Login-Änderungen reagieren
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) fetchUserRole(session.user.id);
     });
-
     return () => subscription.unsubscribe();
   }, []);
+
   const refreshAllData = async () => {
     await Promise.all([fetchProducts(), fetchTransactions(), fetchCategories(), fetchEmployees()]);
   };
@@ -216,7 +215,7 @@ export default function App() {
   });
 
   // --- RENDERING ---
-  //if (isLoading) return <LoadingScreen />;
+  if (isLoading) return <LoadingScreen />;
 
   // SPEZIAL-ANSICHT: QR-MENÜ FÜR KUNDEN
   if (view === 'customer-menu') {
@@ -263,59 +262,12 @@ export default function App() {
           <img src="/kantineapplogo.png" className="w-12 h-12 object-contain drop-shadow-xl" />
           <span className="font-black text-[9px] uppercase text-center leading-tight tracking-widest">Kantine der Hl.Maria & Hl.Philopater</span>
         </div>
-        {/* Ersetze deinen <nav> Bereich durch diesen hier: */}
         <nav className="flex-1 p-2 space-y-1 mt-2">
-          <NavItem
-            active={view === 'pos'}
-            onClick={() => { setView('pos'); setIsSidebarOpen(false); }}
-            icon={<ShoppingCart />}
-            label="Kasse"
-          />
-
-          {isStf && (
-            <NavItem
-              active={view === 'products'}
-              onClick={() => { setView('products'); setIsSidebarOpen(false); }}
-              icon={<List />}
-              label="Bestand"
-            />
-          )}
-
-          {isAdm && (
-            <NavItem
-              active={view === 'statistik'}
-              onClick={() => { setView('statistik'); setIsSidebarOpen(false); }}
-              icon={<TrendingUp />}
-              label="Statistik"
-            />
-          )}
-
-          {isStf && (
-            <NavItem
-              active={view === 'qr'}
-              onClick={() => { setView('qr'); setIsSidebarOpen(false); }}
-              icon={<QrCode />}
-              label="QR-Code"
-            />
-          )}
-
-          {isSuperAdmin && (
-            <NavItem
-              active={view === 'logs'}
-              onClick={() => { setView('logs'); setIsSidebarOpen(false); }}
-              icon={<Activity />}
-              label="Aktivitäten"
-            />
-          )}
-
-          {isSuperAdmin && (
-            <NavItem
-              active={view === 'admin'}
-              onClick={() => { setView('admin'); setIsSidebarOpen(false); }}
-              icon={<ShieldAlert />}
-              label="Personal"
-            />
-          )}
+          <NavItem active={view === 'pos'} onClick={() => setView('pos')} icon={<ShoppingCart />} label="Kasse" />
+          {isStf && <NavItem active={view === 'products'} onClick={() => setView('products')} icon={<List />} label="Bestand" />}
+          {isAdm && <NavItem active={view === 'statistik'} onClick={() => setView('statistik')} icon={<TrendingUp />} label="Statistik" />}
+          {isStf && <NavItem active={view === 'qr'} onClick={() => setView('qr')} icon={<QrCode />} label="QR-Code" />}
+          {isSuper && <NavItem active={view === 'admin'} onClick={() => setView('admin')} icon={<ShieldAlert />} label="Personal" />}
         </nav>
         <button onClick={() => supabase.auth.signOut()} className="m-4 p-3 rounded-xl bg-red-500/10 text-red-400 font-bold flex items-center gap-3 hover:bg-red-500 hover:text-white transition-all uppercase text-[9px] tracking-widest">
           <LogOut size={14} /> Abmelden
@@ -601,7 +553,7 @@ export default function App() {
           /* Bereich für das Speisekarten-Poster (A4) */
           <div className="w-full h-full flex flex-col items-center justify-center p-20 bg-white text-black">
             <img src="/kantineapplogo.png" className="w-40 h-40 mb-10 object-contain" />
-            <h1 className="text-6xl font-black uppercase mb-4 tracking-tighter text-primary">اعمل اسكان للكود و شوف منتجاتنا</h1>
+            <h1 className="text-6xl font-black uppercase mb-4 tracking-tighter text-primary">اعمل اسكان للكود و شوف</h1>
 
             <div className="border-[20px] border-primary p-12 rounded-[5rem] shadow-none">
               <QRCodeSVG
@@ -685,10 +637,21 @@ const LoadingScreen = () => (
   </div>
 );
 
-const NavItem = ({ active, onClick, icon, label }) => (
-  <button onClick={onClick} className={`w-full flex items-center gap-5 p-4 rounded-2xl transition-all duration-300 ${active ? 'bg-blue-800 text-secondary shadow-xl translate-x-2' : 'hover:bg-blue-800/30 text-blue-300'}`}>
+const NavItem = ({ active, onClick, icon, label, closeSidebar }) => (
+  <button
+    onClick={() => {
+      onClick();
+      closeSidebar?.();
+    }}
+    className={`w-full flex items-center gap-5 p-4 rounded-2xl transition-all duration-300 ${active
+      ? 'bg-blue-800 text-secondary shadow-xl translate-x-2'
+      : 'hover:bg-blue-800/30 text-blue-300'
+      }`}
+  >
     {React.cloneElement(icon, { size: 20, strokeWidth: 3 })}
-    <span className="font-black text-[10px] uppercase tracking-widest">{label}</span>
+    <span className="font-black text-[10px] uppercase tracking-widest">
+      {label}
+    </span>
   </button>
 );
 
