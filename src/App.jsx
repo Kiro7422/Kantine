@@ -10,7 +10,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { QRCodeSVG } from 'qrcode.react';
 
 export default function App() {
-  // --- KUNDEN-MENÜ LOGIK (QR SCAN) ---
   const queryParams = new URLSearchParams(window.location.search);
   const isCustomerMenu = queryParams.get('view') === 'menu';
 
@@ -47,7 +46,7 @@ export default function App() {
   const [transactionItems, setTransactionItems] = useState([]);
   const [cashGiven, setCashGiven] = useState('');
 
-  // Animations-States (Für das Fly-to-Cart Feature)
+  // Animations-States
   const [animations, setAnimations] = useState([]);
   const [cartBump, setCartBump] = useState(false);
 
@@ -136,9 +135,8 @@ export default function App() {
     fetchLogs();
   };
 
-  // --- KASSEN FUNKTIONEN (Mit Animation) ---
+  // --- KASSEN FUNKTIONEN ---
   const handleAddToCart = (p, e) => {
-    // 1. Produkt zum Warenkorb hinzufügen
     setCart(prev => {
       const ex = prev.find(i => i.id === p.id);
       if (ex) return prev.map(i => i.id === p.id ? { ...i, quantity: i.quantity + 1 } : i);
@@ -146,14 +144,11 @@ export default function App() {
     });
     addToast('success', `${p.name} hinzugefügt`);
 
-    // 2. Animation starten (Fly-to-Cart)
     if (e && e.currentTarget) {
-      // Startpunkt (Das angeklickte Produkt)
       const rect = e.currentTarget.getBoundingClientRect();
       const startX = rect.left + rect.width / 2;
       const startY = rect.top + rect.height / 2;
 
-      // Zielpunkt (Kassen-Knopf oder Seitenleisten-Korb)
       const isMobile = window.innerWidth < 768;
       const targetId = isMobile ? 'cart-target-mobile' : 'cart-target-desktop';
       const targetEl = document.getElementById(targetId);
@@ -167,7 +162,6 @@ export default function App() {
         targetY = tRect.top + tRect.height / 2;
       }
 
-      // Animation in den State pushen
       const id = Date.now() + Math.random();
       setAnimations(prev => [...prev, { id, startX, startY, targetX, targetY, img: p.image_url }]);
     }
@@ -175,7 +169,6 @@ export default function App() {
 
   const removeAnimation = (id) => {
     setAnimations(prev => prev.filter(a => a.id !== id));
-    // Kleiner Bump/Puls-Effekt auf den Warenkorb-Knopf
     setCartBump(true);
     setTimeout(() => setCartBump(false), 200);
   };
@@ -314,10 +307,22 @@ export default function App() {
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden select-none font-sans">
 
+      {/* EXTREM WICHTIG FÜR SAFARI DRUCK (LÖST DEN BLAUEN RAND) */}
       <style>{`
         @media print {
-          body * { visibility: hidden !important; }
-          .print-area, .print-area * { visibility: visible !important; }
+          html, body, #root { 
+            background: white !important; 
+            background-color: white !important; 
+          }
+          body::before { 
+            display: none !important; /* Blockiert den blauen Hintergrund vom iPhone-Trick */
+          }
+          body * { 
+            visibility: hidden !important; 
+          }
+          .print-area, .print-area * { 
+            visibility: visible !important; 
+          }
           .print-area { 
             position: absolute !important; 
             left: 0 !important; 
@@ -325,12 +330,13 @@ export default function App() {
             width: 100% !important; 
             height: 100% !important;
             display: flex !important; 
-            background-color: white !important; 
+            background: white !important; 
             margin: 0 !important; 
             padding: 0 !important; 
           }
-          html, body { background-color: white !important; margin: 0 !important; padding: 0 !important; }
-          nav, header, button, .no-print { display: none !important; }
+          nav, header, button, .no-print { 
+            display: none !important; 
+          }
         }
       `}</style>
 
@@ -424,7 +430,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* SCHWEBENDER BUTTON (Mit Bump Animation) */}
               <button id="cart-target-mobile" onClick={() => setIsCartOpen(true)} className={`md:hidden fixed bottom-6 right-6 w-16 h-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center z-40 transition-all duration-200 ${cartBump ? 'scale-125 bg-secondary text-primary' : 'animate-bounce-short'}`}>
                 <div className="relative">
                   <ShoppingCart size={28} />
@@ -444,12 +449,33 @@ export default function App() {
                   <div className="space-y-4">
                     <Input value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} placeholder="Produktname" />
                     <Input type="number" value={newProduct.price} onChange={e => setNewProduct({ ...newProduct, price: e.target.value })} placeholder="Preis" />
-                    <div className="relative">
-                      <input list="cat-options" value={newProduct.category} onChange={e => setNewProduct({ ...newProduct, category: e.target.value })} placeholder="Kategorie wählen/tippen" className="w-full p-4 rounded-2xl bg-gray-50 border-none font-bold text-xs outline-none focus:ring-4 focus:ring-primary/5" />
-                      <datalist id="cat-options">
-                        {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                      </datalist>
+
+                    {/* KATEGORIE MIT SCHICKEN CHIPS */}
+                    <div className="space-y-2">
+                      <Input
+                        value={newProduct.category}
+                        onChange={e => setNewProduct({ ...newProduct, category: e.target.value })}
+                        placeholder="Kategorie tippen oder unten wählen"
+                      />
+                      {categories.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {categories.map(c => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setNewProduct({ ...newProduct, category: c.name });
+                              }}
+                              className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all shadow-sm ${newProduct.category === c.name ? 'bg-primary text-white scale-105' : 'bg-white text-gray-400 border hover:bg-gray-50'}`}
+                            >
+                              {c.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
+
                   </div>
                   <div className="space-y-4">
                     <label className="group relative flex flex-col items-center justify-center h-44 border-4 border-dashed border-gray-100 rounded-[2.5rem] cursor-pointer hover:border-primary transition-all overflow-hidden bg-gray-50">
@@ -462,10 +488,10 @@ export default function App() {
                         if (e.target.files[0]) { setImageFile(e.target.files[0]); setImagePreview(URL.createObjectURL(e.target.files[0])); }
                       }} className="hidden" />
                     </label>
-                    {(imagePreview || newProduct.image_url) && <button onClick={() => { setImagePreview(null); setImageFile(null); setNewProduct({ ...newProduct, image_url: null }) }} className="w-full text-red-400 font-bold text-[8px] uppercase">Bild entfernen</button>}
+                    {(imagePreview || newProduct.image_url) && <button type="button" onClick={() => { setImagePreview(null); setImageFile(null); setNewProduct({ ...newProduct, image_url: null }) }} className="w-full text-red-400 font-bold text-[8px] uppercase">Bild entfernen</button>}
                   </div>
                   <button onClick={handleSaveProduct} className={`py-6 rounded-3xl font-black text-white shadow-xl ${editingProductId ? 'bg-yellow-500' : 'bg-primary'} col-span-1 md:col-span-2 uppercase text-[10px] tracking-widest`}>SPEICHERN</button>
-                  {editingProductId && <button onClick={() => { setEditingProductId(null); setNewProduct({ name: '', price: '', category: '' }); setImagePreview(null); }} className="col-span-1 md:col-span-2 text-gray-400 font-bold text-[8px] uppercase">Abbrechen</button>}
+                  {editingProductId && <button type="button" onClick={() => { setEditingProductId(null); setNewProduct({ name: '', price: '', category: '' }); setImagePreview(null); }} className="col-span-1 md:col-span-2 text-gray-400 font-bold text-[8px] uppercase">Abbrechen</button>}
                 </div>
               </div>
 
@@ -682,7 +708,6 @@ export default function App() {
           <div className="w-full h-full flex flex-col items-center justify-center p-20 bg-white text-black text-center">
             <img src="/kantineapplogo.png" className="w-40 h-40 mb-10 object-contain" />
             <h1 className="text-6xl font-black uppercase mb-4 tracking-tighter text-primary">اعمل اسكان للكود و شوف</h1>
-            <p className="text-2xl font-bold text-gray-500 mb-16 uppercase tracking-[0.3em]">Scannen & Menü ansehen</p>
             <div className="border-[20px] border-primary p-12 rounded-[5rem] shadow-none bg-white">
               <QRCodeSVG value={`${window.location.origin}?view=menu`} size={500} level="H" />
             </div>
