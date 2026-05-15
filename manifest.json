@@ -1,0 +1,20 @@
+{
+    "name": "Kantine der Hl. Maria & Philopater",
+    "short_name": "Kantine",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#1e3a8a",
+    "theme_color": "#1e3a8a",
+    "icons": [
+        {
+            "src": "/kantineapplogo.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/kantineapplogo.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}
