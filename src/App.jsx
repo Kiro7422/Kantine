@@ -46,7 +46,7 @@ export default function App() {
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [transactionItems, setTransactionItems] = useState([]);
   const [cashGiven, setCashGiven] = useState('');
-  const [enlargedImage, setEnlargedImage] = useState(null); // State für vergrößertes Kunden-Bild
+  const [enlargedImage, setEnlargedImage] = useState(null);
 
   // Animations-States (Für das Fly-to-Cart Feature)
   const [animations, setAnimations] = useState([]);
@@ -281,19 +281,27 @@ export default function App() {
 
   if (isLoading) return <LoadingScreen />;
 
-  // --- KUNDEN-MENÜ (Mit Vollbild-Bilder Funktion & ohne Text-Abschneiden) ---
+  // --- KUNDEN-MENÜ ---
   if (view === 'customer-menu') {
     return (
       <div className="h-screen overflow-y-auto bg-white font-sans p-6 pb-24 text-center relative">
         <img src="/kantineapplogo.png" className="w-24 h-24 mx-auto mb-6" />
-        <h1 className="text-3xl font-black text-primary uppercase tracking-tighter mb-10 italic">Speisekarte</h1>
+        <h1 className="text-3xl font-black text-primary uppercase tracking-tighter mb-6 italic">Produkte</h1>
+
+        {/* KATEGORIE-FILTER FÜR KUNDEN */}
+        <div className="flex gap-2 overflow-x-auto pb-6 mb-2 no-scrollbar max-w-xl mx-auto justify-start md:justify-center">
+          <button onClick={() => setFilterCat('All')} className={`px-5 py-2 rounded-full font-black text-[10px] uppercase shadow-sm transition-all flex-shrink-0 ${filterCat === 'All' ? 'bg-primary text-white' : 'bg-gray-50 text-gray-400 border'}`}>Alle</button>
+          {categories.map(c => (
+            <button key={c.id} onClick={() => setFilterCat(c.name)} className={`px-5 py-2 rounded-full font-black text-[10px] uppercase shadow-sm transition-all flex-shrink-0 ${filterCat === c.name ? 'bg-primary text-white' : 'bg-gray-50 text-gray-400 border'}`}>{c.name}</button>
+          ))}
+        </div>
 
         <div className="grid grid-cols-1 gap-4 max-w-xl mx-auto">
-          {products.map(p => (
+          {products.filter(p => filterCat === 'All' || p.categories?.name === filterCat).map(p => (
             <div key={p.id} className="flex items-center gap-5 p-5 bg-gray-50 rounded-[2.5rem] border shadow-sm text-left">
               <button
                 onClick={() => p.image_url && setEnlargedImage(p.image_url)}
-                className="w-24 h-24 rounded-3xl bg-white overflow-hidden border flex-shrink-0 relative group focus:outline-none"
+                className="w-20 h-20 rounded-3xl bg-white overflow-hidden border flex-shrink-0 relative group focus:outline-none"
               >
                 {p.image_url ? <img src={p.image_url} className="w-full h-full object-cover" /> : <ImageIcon className="w-full h-full p-6 text-gray-200" />}
                 {p.image_url && (
@@ -412,7 +420,6 @@ export default function App() {
                   ))}
                 </div>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 overflow-y-auto pr-2 pb-24">
-                  {/* FIX: Die Buttons wachsen jetzt mit dem Text mit und schneiden nichts ab (h-auto) */}
                   {products.filter(p => filterCat === 'All' || p.categories?.name === filterCat).map(p => (
                     <button key={p.id} onClick={(e) => handleAddToCart(p, e)} className="bg-white p-4 rounded-[2rem] shadow-sm border-2 border-transparent hover:border-secondary hover:shadow-xl transition-all active:scale-95 flex flex-col items-center relative group h-auto w-full">
                       <div className="w-full aspect-square bg-gray-50 rounded-3xl overflow-hidden mb-3 flex items-center justify-center border group-active:scale-90 transition-transform shrink-0">
@@ -612,7 +619,7 @@ export default function App() {
             <div className="max-w-xl mx-auto text-center no-print">
               <div className="bg-white p-12 rounded-[4rem] shadow-2xl flex flex-col items-center border">
                 <QrCode size={48} className="text-primary mb-6" />
-                <h2 className="text-3xl font-black uppercase tracking-tighter italic mb-10 text-gray-800">Kunden-Menü QR</h2>
+                <h2 className="text-3xl font-black uppercase tracking-tighter italic mb-10 text-gray-800">QR-Code</h2>
                 <div className="p-8 bg-white border-[12px] border-primary rounded-[4rem] shadow-2xl mb-12">
                   <QRCodeSVG value={`${window.location.origin}?view=menu`} size={250} includeMargin={true} />
                 </div>
@@ -730,8 +737,7 @@ export default function App() {
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center p-20 bg-white text-black text-center">
             <img src="/kantineapplogo.png" className="w-40 h-40 mb-10 object-contain" />
-            <h1 className="text-6xl font-black uppercase mb-4 tracking-tighter text-primary">اعمل اسكان للكود و شوف</h1>
-            <p className="text-2xl font-bold text-gray-500 mb-16 uppercase tracking-[0.3em]">Scannen & Menü ansehen</p>
+            <h1 className="text-6xl font-black uppercase mb-4 tracking-tighter text-primary">Produkte einsehen</h1>
             <div className="border-[20px] border-primary p-12 rounded-[5rem] shadow-none bg-white">
               <QRCodeSVG value={`${window.location.origin}?view=menu`} size={500} level="H" />
             </div>
